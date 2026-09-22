@@ -14,3 +14,13 @@ inputs = NaiveDCFInputs(
 result = run_naive_dcf(inputs)
 for key, value in result.items():
     print(f"{key}: {value}")
+
+
+from equity_valuation.sensitivity import sensitivity_grid, format_grid
+
+growth_rates = [0.06, 0.08, 0.10, 0.12, 0.14]
+discount_rates = [0.08, 0.09, 0.10, 0.11, 0.12]
+
+grid = sensitivity_grid(inputs, growth_rates, discount_rates)
+print("\nSensitivity table (value per share):")
+print(format_grid(grid, growth_rates, discount_rates))

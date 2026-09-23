@@ -1,0 +1,24 @@
+[project]
+name = "equity-valuation"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "rahimsadighi", email = "sadighi.rahim@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+equity-valuation = "equity_valuation:main"
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

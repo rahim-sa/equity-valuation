@@ -15,6 +15,53 @@
 # for key, value in result.items():
 #     print(f"{key}: {value}")
 
+# from equity_valuation.dcf import NaiveDCFInputs, run_naive_dcf
+# from equity_valuation.wacc import (
+#     CostOfEquityInputs,
+#     CostOfDebtInputs,
+#     WACCInputs,
+#     cost_of_equity_capm,
+#     cost_of_debt_effective_rate,
+#     wacc,
+# )
+
+# # --- WACC inputs (still hardcoded placeholders, same discipline as before —
+# # real EDGAR/FRED/Damodaran data comes in stage (c)) ---
+# coe_inputs = CostOfEquityInputs(risk_free_rate=0.04, beta=1.1, equity_risk_premium=0.05)
+# cost_of_equity = cost_of_equity_capm(coe_inputs)
+
+# cod_inputs = CostOfDebtInputs(interest_expense=10.0, total_debt=200.0)
+# cost_of_debt = cost_of_debt_effective_rate(cod_inputs)
+
+# wacc_inputs = WACCInputs(
+#     market_value_equity=2500.0,   # e.g. share_price * shares_outstanding
+#     market_value_debt=200.0,
+#     cost_of_equity=cost_of_equity,
+#     cost_of_debt=cost_of_debt,
+#     tax_rate=0.21,
+# )
+# discount_rate = wacc(wacc_inputs)
+
+# print(f"cost_of_equity: {cost_of_equity:.4f}")
+# print(f"cost_of_debt: {cost_of_debt:.4f}")
+# print(f"computed WACC (discount_rate): {discount_rate:.4f}")
+
+# # --- DCF inputs, now using computed WACC instead of a hardcoded discount_rate ---
+# inputs = NaiveDCFInputs(
+#     base_fcf=100.0,
+#     growth_rate=0.10,
+#     discount_rate=discount_rate,
+#     terminal_growth_rate=0.03,
+#     projection_years=5,
+#     net_debt=200.0,
+#     shares_outstanding=50.0,
+# )
+
+# result = run_naive_dcf(inputs)
+# for key, value in result.items():
+#     print(f"{key}: {value}")
+
+
 from equity_valuation.dcf import NaiveDCFInputs, run_naive_dcf
 from equity_valuation.wacc import (
     CostOfEquityInputs,
@@ -24,29 +71,45 @@ from equity_valuation.wacc import (
     cost_of_debt_effective_rate,
     wacc,
 )
+from equity_valuation.credit_rating import cost_of_debt_synthetic_rating
 
 # --- WACC inputs (still hardcoded placeholders, same discipline as before —
 # real EDGAR/FRED/Damodaran data comes in stage (c)) ---
-coe_inputs = CostOfEquityInputs(risk_free_rate=0.04, beta=1.1, equity_risk_premium=0.05)
+risk_free_rate = 0.04
+
+coe_inputs = CostOfEquityInputs(risk_free_rate=risk_free_rate, beta=1.1, equity_risk_premium=0.05)
 cost_of_equity = cost_of_equity_capm(coe_inputs)
 
+# Option A: effective rate from financials
 cod_inputs = CostOfDebtInputs(interest_expense=10.0, total_debt=200.0)
-cost_of_debt = cost_of_debt_effective_rate(cod_inputs)
+cost_of_debt_a = cost_of_debt_effective_rate(cod_inputs)
 
+# Option B: synthetic credit rating spread
+# ebit here must be consistent with the same company/period as interest_expense above.
+cost_of_debt_b, matched_rating = cost_of_debt_synthetic_rating(
+    ebit=120.0, interest_expense=10.0, risk_free_rate=risk_free_rate
+)
+
+print(f"cost_of_equity: {cost_of_equity:.4f}")
+print(f"cost_of_debt (A, effective rate): {cost_of_debt_a:.4f}")
+print(f"cost_of_debt (B, synthetic rating): {cost_of_debt_b:.4f} (matched rating: {matched_rating.rating})")
+
+# Using Option A to drive the DCF below, for now -- Option A stays the default
+# since it reflects THIS company's actual reported borrowing cost, while Option B
+# is a market-implied cross-check. Printing both side by side is the point: a large
+# gap between A and B is a signal worth investigating (e.g. below-market legacy debt,
+# or a data quality issue), not something to silently paper over by picking one.
 wacc_inputs = WACCInputs(
     market_value_equity=2500.0,   # e.g. share_price * shares_outstanding
     market_value_debt=200.0,
     cost_of_equity=cost_of_equity,
-    cost_of_debt=cost_of_debt,
+    cost_of_debt=cost_of_debt_a,
     tax_rate=0.21,
 )
 discount_rate = wacc(wacc_inputs)
 
-print(f"cost_of_equity: {cost_of_equity:.4f}")
-print(f"cost_of_debt: {cost_of_debt:.4f}")
 print(f"computed WACC (discount_rate): {discount_rate:.4f}")
 
-# --- DCF inputs, now using computed WACC instead of a hardcoded discount_rate ---
 inputs = NaiveDCFInputs(
     base_fcf=100.0,
     growth_rate=0.10,
@@ -57,9 +120,6 @@ inputs = NaiveDCFInputs(
     shares_outstanding=50.0,
 )
 
-result = run_naive_dcf(inputs)
-for key, value in result.items():
-    print(f"{key}: {value}")
 
 
 from equity_valuation.sensitivity import sensitivity_grid, format_grid

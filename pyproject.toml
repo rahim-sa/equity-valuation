@@ -7,7 +7,9 @@ authors = [
     { name = "rahimsadighi", email = "sadighi.rahim@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "requests>=2.34.2",
+]
 
 [project.scripts]
 equity-valuation = "equity_valuation:main"

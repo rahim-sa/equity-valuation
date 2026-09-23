@@ -59,3 +59,4 @@ def test_higher_coverage_never_produces_higher_cost_of_debt():
         ebit=1000.0, interest_expense=100.0, risk_free_rate=0.04
     )
     assert high_coverage_cost <= low_coverage_cost
+

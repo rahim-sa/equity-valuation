@@ -66,3 +66,41 @@ def resolve_duplicate_periods(entries: list[dict]) -> list[dict]:
 
     # Return sorted oldest-to-newest by period end, for a clean chronological series.
     return sorted(best_by_period.values(), key=lambda e: e["end"])
+
+
+def select_annual_instant_facts(entries: list[dict]) -> list[dict]:
+    """
+    Keep only instant-type entries (balance sheet snapshot, no 'start'
+    field) from a clean 10-K, not 10-K/A. Instant facts have no duration
+    to check, so this doesn't use the day-count filter select_annual_facts
+    uses -- being an instant fact from a 10-K is the whole check.
+    """
+    kept = []
+    for entry in entries:
+        if entry.get("form") != "10-K":
+            continue
+        if "start" in entry:
+            continue  # this is a duration fact, not instant -- wrong bucket
+        if "end" not in entry:
+            continue
+        kept.append(entry)
+    return kept
+
+
+def resolve_duplicate_instant_periods(entries: list[dict]) -> list[dict]:
+    """
+    Same duplicate-resolution logic as resolve_duplicate_periods (latest
+    filing within 2 years wins), but keyed on 'end' date alone, since
+    instant facts have no 'start' to include in the key.
+    """
+    best_by_period: dict[str, dict] = {}
+    for entry in entries:
+        period_end = _parse_date(entry["end"])
+        filed = _parse_date(entry["filed"])
+        if (filed - period_end).days > 2 * 365:
+            continue
+        key = entry["end"]
+        current_best = best_by_period.get(key)
+        if current_best is None or filed > _parse_date(current_best["filed"]):
+            best_by_period[key] = entry
+    return sorted(best_by_period.values(), key=lambda e: e["end"])

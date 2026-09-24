@@ -74,3 +74,38 @@ def test_resolve_duplicate_periods_returns_sorted_chronological_series():
     ]
     result = resolve_duplicate_periods(entries)
     assert [e["val"] for e in result] == [100, 200]
+
+
+from equity_valuation.statement_mapping import (
+    select_annual_instant_facts,
+    resolve_duplicate_instant_periods,
+)
+
+
+def test_select_annual_instant_facts_keeps_instant_entry():
+    entries = [{"form": "10-K", "end": "2019-12-31", "filed": "2020-02-01", "val": 500}]
+    result = select_annual_instant_facts(entries)
+    assert len(result) == 1
+    assert result[0]["val"] == 500
+
+
+def test_select_annual_instant_facts_drops_duration_entry():
+    entries = [
+        {"form": "10-K", "start": "2019-01-01", "end": "2019-12-31", "filed": "2020-02-01", "val": 500}
+    ]
+    assert select_annual_instant_facts(entries) == []
+
+
+def test_select_annual_instant_facts_drops_10k_amendment():
+    entries = [{"form": "10-K/A", "end": "2019-12-31", "filed": "2020-03-01", "val": 500}]
+    assert select_annual_instant_facts(entries) == []
+
+
+def test_resolve_duplicate_instant_periods_prefers_latest_filing():
+    entries = [
+        {"end": "2019-12-31", "filed": "2020-02-01", "val": 100},
+        {"end": "2019-12-31", "filed": "2021-02-01", "val": 105},
+    ]
+    result = resolve_duplicate_instant_periods(entries)
+    assert len(result) == 1
+    assert result[0]["val"] == 105

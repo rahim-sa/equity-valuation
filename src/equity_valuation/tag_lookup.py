@@ -60,11 +60,29 @@ TAG_FALLBACKS: dict[str, list[str]] = {
     "capex": [
         "PaymentsToAcquirePropertyPlantAndEquipment",
     ],
+
+
+        "current_assets": [
+        "AssetsCurrent",
+    ],
+    "current_liabilities": [
+        "LiabilitiesCurrent",
+    ],
+    "income_tax_expense": [
+        "IncomeTaxExpenseBenefit",
+    ],
+    "pretax_income": [
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+    ],
+
+    
 }
 
 # Concepts that are balance-sheet snapshots (instant), not period durations.
 # Drives which statement_mapping functions assembly should use for each.
-INSTANT_CONCEPTS: set[str] = {"cash_and_equivalents"}
+#INSTANT_CONCEPTS: set[str] = {"cash_and_equivalents"}
+INSTANT_CONCEPTS: set[str] = {"cash_and_equivalents", "current_assets", "current_liabilities"}
 
 
 class ConceptNotFoundError(Exception):

@@ -124,6 +124,24 @@ def assemble_delta_nwc_series(company_facts: dict) -> dict:
     missing balance sheet data), the delta spans whatever gap remains,
     which will overstate that single delta. This is flagged rather than
     silently smoothed over.
+
+    IMPORTANT, CONFIRMED WITH REAL DATA: this balance-sheet-derived delta
+    NWC does NOT match the "change in working capital" line a company
+    reports directly on its own cash flow statement, and the two are NOT
+    interchangeable. Cross-checked against real AAPL FY2025 data:
+      - This function (balance sheet deltas): -810,000,000
+      - AAPL's own reported cash flow "Change In Working Capital"
+        (as surfaced via yfinance): -25,000,000,000
+    These differ by a wide margin because a company's own cash-flow-
+    statement reconciliation only includes the specific line items IT
+    chose to classify there, can exclude certain balance sheet items
+    entirely, and can reclassify some current items into investing
+    activities instead of operating. This function's balance-sheet-based
+    approach is more mechanically consistent across companies (useful
+    for comps later), but it is a DIFFERENT, not-directly-comparable
+    measure from a company's self-reported cash flow "changes in working
+    capital" figure. Do not assume they should match, and do not
+    substitute one for the other without accounting for this gap.
     """
     nwc = assemble_nwc_series(company_facts)
     sorted_years = sorted(nwc.keys())

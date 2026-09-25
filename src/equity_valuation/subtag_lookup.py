@@ -47,10 +47,16 @@ def get_total_debt_components(company_facts: dict) -> dict:
     """
     us_gaap_facts = company_facts.get("facts", {}).get("us-gaap", {})
 
+    
     combined = us_gaap_facts.get(TOTAL_DEBT_COMBINED_TAG)
     if combined is not None:
         usd_entries = combined.get("units", {}).get("USD", [])
-        if usd_entries:
+        # Only prefer "combined" mode if it actually has annual (10-K) data --
+        # a tag that exists but only appears in 10-Q filings would otherwise
+        # be silently chosen and then produce zero usable years downstream,
+        # while perfectly good 10-K data sits unused in the subtag fallback.
+        has_annual_entry = any(e.get("form") == "10-K" for e in usd_entries)
+        if usd_entries and has_annual_entry:
             return {"mode": "combined", "tag": TOTAL_DEBT_COMBINED_TAG, "entries": usd_entries}
 
     subtag_entries = {}
@@ -94,3 +100,59 @@ def get_current_debt_only_components(company_facts: dict) -> dict:
             if usd_entries:
                 subtag_entries[tag] = usd_entries
     return {"subtag_entries": subtag_entries}
+
+
+DA_COMBINED_TAGS = [
+    "DepreciationDepletionAndAmortization",
+    "DepreciationAmortizationAndAccretionNet",
+    "DepreciationAndAmortization",
+]
+
+# Some filers (e.g. Microsoft) split D&A into separate depreciation and
+# amortization tags rather than reporting one combined figure.
+DA_SPLIT_TAGS = [
+    "Depreciation",
+    "AmortizationOfIntangibleAssets",
+]
+
+
+def get_da_components(company_facts: dict) -> dict:
+    """
+    Returns either:
+      {"mode": "combined", "tag": <tag_name>, "entries": [...]}
+    or:
+      {"mode": "summed", "subtag_entries": {tag_name: [...], ...}}
+
+    Tries each combined tag in DA_COMBINED_TAGS first (existing fallback
+    order preserved), then falls back to summing whichever of DA_SPLIT_TAGS
+    are present -- same "sum whatever's actually there" approach as total
+    debt, since a filer could plausibly report only one of the two split
+    tags in some years.
+    """
+    us_gaap_facts = company_facts.get("facts", {}).get("us-gaap", {})
+
+
+    for tag in DA_COMBINED_TAGS:
+        tag_data = us_gaap_facts.get(tag)
+        if tag_data is not None:
+            usd_entries = tag_data.get("units", {}).get("USD", [])
+            has_annual_entry = any(e.get("form") == "10-K" for e in usd_entries)
+            if usd_entries and has_annual_entry:
+                return {"mode": "combined", "tag": tag, "entries": usd_entries}
+                
+
+    subtag_entries = {}
+    for tag in DA_SPLIT_TAGS:
+        tag_data = us_gaap_facts.get(tag)
+        if tag_data is not None:
+            usd_entries = tag_data.get("units", {}).get("USD", [])
+            if usd_entries:
+                subtag_entries[tag] = usd_entries
+
+    if not subtag_entries:
+        raise SubtagConceptNotFoundError(
+            f"Neither any of {DA_COMBINED_TAGS} nor any of {DA_SPLIT_TAGS} "
+            f"were found for depreciation and amortization"
+        )
+
+    return {"mode": "summed", "subtag_entries": subtag_entries}

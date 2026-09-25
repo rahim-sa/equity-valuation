@@ -76,6 +76,10 @@ TAG_FALLBACKS: dict[str, list[str]] = {
         "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
     ],
 
+        "net_income": [
+        "NetIncomeLoss",
+    ],
+
     
 }
 

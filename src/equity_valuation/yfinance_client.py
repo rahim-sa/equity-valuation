@@ -25,3 +25,19 @@ def get_yfinance_annual_financials(ticker: str) -> dict:
         "cash_flow": t.cash_flow,
         "balance_sheet": t.balance_sheet,
     }
+
+
+def get_current_price_and_shares(ticker: str) -> dict:
+    """
+    Returns {"price": float, "shares_outstanding": float} using yfinance's
+    current market data -- appropriate use of yfinance here specifically,
+    since this is TODAY's value, not historical financial statement data
+    (see data-source assessment: yfinance is fine for current price/shares,
+    unreliable for historical statement line items).
+    """
+    t = yf.Ticker(ticker)
+    info = t.info
+    return {
+        "price": info["currentPrice"],
+        "shares_outstanding": info["sharesOutstanding"],
+    }

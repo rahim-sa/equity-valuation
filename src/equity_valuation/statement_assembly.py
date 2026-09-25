@@ -9,7 +9,8 @@ Assembles a clean multi-year annual series per concept, chaining:
 Debt is always instant (balance sheet), regardless of combined-vs-summed mode.
 """
 from equity_valuation.tag_lookup import get_raw_entries_for_concept, INSTANT_CONCEPTS, ConceptNotFoundError
-from equity_valuation.subtag_lookup import get_total_debt_components, get_current_debt_only_components
+#from equity_valuation.subtag_lookup import get_total_debt_components, get_current_debt_only_components
+from equity_valuation.subtag_lookup import get_total_debt_components, get_current_debt_only_components, get_da_components
 from equity_valuation.tag_lookup import get_raw_entries_for_concept, INSTANT_CONCEPTS
 from equity_valuation.subtag_lookup import get_total_debt_components
 from equity_valuation.statement_mapping import (
@@ -191,7 +192,8 @@ def assemble_unlevered_fcf_series(company_facts: dict, fallback_tax_rate: float 
     for every company.
     """
     ebit = assemble_concept_series(company_facts, "ebit")["series"]
-    da = assemble_concept_series(company_facts, "depreciation_and_amortization")["series"]
+    #da = assemble_concept_series(company_facts, "depreciation_and_amortization")["series"]
+    da = assemble_da_series(company_facts)
     capex = assemble_concept_series(company_facts, "capex")["series"]
     delta_nwc = assemble_delta_nwc_series(company_facts)
     tax_rates = assemble_effective_tax_rate_series(company_facts)
@@ -202,3 +204,35 @@ def assemble_unlevered_fcf_series(company_facts: dict, fallback_tax_rate: float 
         tax_rate = tax_rates.get(year, fallback_tax_rate)
         fcf_series[year] = ebit[year] * (1 - tax_rate) + da[year] - capex[year] - delta_nwc[year]
     return fcf_series
+
+
+def assemble_ebitda_series(company_facts: dict) -> dict:
+    """EBITDA = EBIT + D&A, only for years present in both series."""
+    ebit = assemble_concept_series(company_facts, "ebit")["series"]
+    #da = assemble_concept_series(company_facts, "depreciation_and_amortization")["series"]
+    da = assemble_da_series(company_facts)
+    common_years = set(ebit) & set(da)
+    return {year: ebit[year] + da[year] for year in common_years}
+
+
+def assemble_da_series(company_facts: dict) -> dict:
+    """
+    D&A series handling both combined-tag filers and split-tag filers
+    (e.g. Microsoft splits Depreciation from AmortizationOfIntangibleAssets).
+    D&A entries are DURATION facts (income-statement-adjacent), not instant.
+    """
+    components = get_da_components(company_facts)
+
+    if components["mode"] == "combined":
+        annual = select_annual_facts(components["entries"])
+        resolved = resolve_duplicate_periods(annual)
+        return {entry["end"]: entry["val"] for entry in resolved}
+
+    per_tag_series = {}
+    for tag_name, entries in components["subtag_entries"].items():
+        annual = select_annual_facts(entries)
+        resolved = resolve_duplicate_periods(annual)
+        per_tag_series[tag_name] = {entry["end"]: entry["val"] for entry in resolved}
+
+    all_years = set.union(*(set(s.keys()) for s in per_tag_series.values())) if per_tag_series else set()
+    return {year: sum(series.get(year, 0) for series in per_tag_series.values()) for year in all_years}

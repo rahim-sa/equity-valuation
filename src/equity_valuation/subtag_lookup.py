@@ -69,3 +69,28 @@ def get_total_debt_components(company_facts: dict) -> dict:
         )
 
     return {"mode": "summed", "subtag_entries": subtag_entries}
+
+
+def get_current_debt_only_components(company_facts: dict) -> dict:
+    """
+    Returns {"subtag_entries": {tag_name: [...]}} for JUST the current-debt
+    category tags -- needed for NWC (non-cash working capital subtracts
+    short-term debt specifically, not total debt).
+
+    Unlike get_total_debt_components, this does NOT raise if nothing is
+    found -- a company can genuinely have zero short-term debt, and if a
+    company only reports a COMBINED long+short debt figure with no
+    breakdown at all, we have no way to isolate the current portion.
+    Callers must treat an empty result as "current debt data unavailable,
+    treat as 0" and should be aware this is a simplification for such
+    companies, not confirmed zero debt.
+    """
+    us_gaap_facts = company_facts.get("facts", {}).get("us-gaap", {})
+    subtag_entries = {}
+    for tag in TOTAL_DEBT_CATEGORIES["current"]:
+        tag_data = us_gaap_facts.get(tag)
+        if tag_data is not None:
+            usd_entries = tag_data.get("units", {}).get("USD", [])
+            if usd_entries:
+                subtag_entries[tag] = usd_entries
+    return {"subtag_entries": subtag_entries}

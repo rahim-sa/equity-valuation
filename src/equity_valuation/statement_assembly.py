@@ -38,32 +38,6 @@ def assemble_concept_series(company_facts: dict, concept: str) -> dict:
     return {"tags_used": tags_used, "series": series}
 
 
-def assemble_total_debt_series(company_facts: dict) -> dict:
-    """
-    Returns {"mode": "combined"|"summed", "series": {fiscal_year_end: value}}.
-    Debt entries are instant facts -- always uses the instant filter/resolver.
-    """
-    components = get_total_debt_components(company_facts)
-
-    if components["mode"] == "combined":
-        annual = select_annual_instant_facts(components["entries"])
-        resolved = resolve_duplicate_instant_periods(annual)
-        series = {entry["end"]: entry["val"] for entry in resolved}
-        return {"mode": "combined", "series": series}
-
-    per_tag_series = {}
-    for tag_name, entries in components["subtag_entries"].items():
-        annual = select_annual_instant_facts(entries)
-        resolved = resolve_duplicate_instant_periods(annual)
-        per_tag_series[tag_name] = {entry["end"]: entry["val"] for entry in resolved}
-
-    all_years = set.union(*(set(s.keys()) for s in per_tag_series.values())) if per_tag_series else set()
-    summed_series = {
-        year: sum(series.get(year, 0) for series in per_tag_series.values())
-        for year in all_years
-    }
-    return {"mode": "summed", "series": summed_series}
-
 
 def assemble_current_debt_series(company_facts: dict) -> dict:
     """Returns {fiscal_year_end: value}, current (short-term) debt only. See
@@ -215,24 +189,70 @@ def assemble_ebitda_series(company_facts: dict) -> dict:
     return {year: ebit[year] + da[year] for year in common_years}
 
 
-def assemble_da_series(company_facts: dict) -> dict:
+def _merge_combined_and_summed(combined_entries: list[dict], subtag_entries: dict) -> dict:
     """
-    D&A series handling both combined-tag filers and split-tag filers
-    (e.g. Microsoft splits Depreciation from AmortizationOfIntangibleAssets).
-    D&A entries are DURATION facts (income-statement-adjacent), not instant.
+    Shared merge logic for DURATION facts (like D&A): builds a clean
+    annual series from combined_entries (if any) and a separate summed
+    series from subtag_entries (if any), then merges them PER YEAR --
+    combined tag's value wins for any year it covers; summed subtags
+    fill in every other year.
     """
-    components = get_da_components(company_facts)
-
-    if components["mode"] == "combined":
-        annual = select_annual_facts(components["entries"])
+    combined_series = {}
+    if combined_entries:
+        annual = select_annual_facts(combined_entries)
         resolved = resolve_duplicate_periods(annual)
-        return {entry["end"]: entry["val"] for entry in resolved}
+        combined_series = {entry["end"]: entry["val"] for entry in resolved}
 
     per_tag_series = {}
-    for tag_name, entries in components["subtag_entries"].items():
+    for tag_name, entries in subtag_entries.items():
         annual = select_annual_facts(entries)
         resolved = resolve_duplicate_periods(annual)
         per_tag_series[tag_name] = {entry["end"]: entry["val"] for entry in resolved}
 
-    all_years = set.union(*(set(s.keys()) for s in per_tag_series.values())) if per_tag_series else set()
-    return {year: sum(series.get(year, 0) for series in per_tag_series.values()) for year in all_years}
+    summed_series = {}
+    if per_tag_series:
+        all_years = set.union(*(set(s.keys()) for s in per_tag_series.values()))
+        summed_series = {year: sum(s.get(year, 0) for s in per_tag_series.values()) for year in all_years}
+
+    merged = dict(summed_series)
+    merged.update(combined_series)
+    return merged
+
+
+def assemble_total_debt_series(company_facts: dict) -> dict:
+    """
+    Returns {fiscal_year_end: value}. Debt entries are INSTANT facts
+    (balance sheet snapshots), so this uses instant filtering/resolving,
+    merging combined-tag data with summed subtag data per year.
+    """
+    components = get_total_debt_components(company_facts)
+
+    combined_series = {}
+    if components["combined_entries"]:
+        annual = select_annual_instant_facts(components["combined_entries"])
+        resolved = resolve_duplicate_instant_periods(annual)
+        combined_series = {entry["end"]: entry["val"] for entry in resolved}
+
+    per_tag_series = {}
+    for tag_name, entries in components["subtag_entries"].items():
+        annual = select_annual_instant_facts(entries)
+        resolved = resolve_duplicate_instant_periods(annual)
+        per_tag_series[tag_name] = {entry["end"]: entry["val"] for entry in resolved}
+
+    summed_series = {}
+    if per_tag_series:
+        all_years = set.union(*(set(s.keys()) for s in per_tag_series.values()))
+        summed_series = {year: sum(s.get(year, 0) for s in per_tag_series.values()) for year in all_years}
+
+    merged = dict(summed_series)
+    merged.update(combined_series)
+    return merged
+
+
+def assemble_da_series(company_facts: dict) -> dict:
+    """
+    D&A series, merging combined-tag data with summed split-tag data per
+    year (see _merge_combined_and_summed). D&A entries are DURATION facts.
+    """
+    components = get_da_components(company_facts)
+    return _merge_combined_and_summed(components["combined_entries"], components["subtag_entries"])

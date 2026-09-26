@@ -125,3 +125,40 @@ def implied_valuation_range(summary: MultipleSummary, target_metric_value: float
         "median": implied_value_from_peer_multiple(summary.median, target_metric_value, metric_type),
         "high": implied_value_from_peer_multiple(summary.maximum, target_metric_value, metric_type),
     }
+
+
+from datetime import date, datetime
+
+
+def check_fiscal_year_alignment(
+    target_fiscal_year_end: str, peer_multiples: list[PeerMultiples], warning_threshold_days: int = 120
+) -> list[str]:
+    """
+    Returns a list of human-readable warnings for any peer whose fiscal
+    year end is more than warning_threshold_days away from the target's.
+
+    This does NOT fix the underlying misalignment (that would require
+    TTM data -- a separate, larger piece of work, deliberately deferred).
+    It only makes the misalignment impossible to silently miss when
+    reading comps output. Default threshold of 120 days (~4 months) is
+    a judgment call, not a rigorous cutoff -- shorter gaps are common
+    and less concerning; a gap approaching or exceeding a full quarter
+    starts to risk real fundamental drift between the two "snapshots"
+    being compared, especially in fast-moving sectors.
+    """
+    def _parse(s: str) -> date:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+
+    target_date = _parse(target_fiscal_year_end)
+    warnings = []
+
+    for pm in peer_multiples:
+        peer_date = _parse(pm.fiscal_year_end)
+        gap_days = abs((target_date - peer_date).days)
+        if gap_days > warning_threshold_days:
+            warnings.append(
+                f"WARNING: {pm.ticker}'s fiscal year end ({pm.fiscal_year_end}) is "
+                f"{gap_days} days from the target's ({target_fiscal_year_end}). "
+                f"Multiples are not time-aligned -- treat this comparison with caution."
+            )
+    return warnings

@@ -36,7 +36,7 @@ def build_company_financials(ticker: str, ticker_map: dict) -> dict:
     ebit = assemble_concept_series(facts, "ebit")["series"]
     ebitda = assemble_ebitda_series(facts)
     cash = assemble_concept_series(facts, "cash_and_equivalents")["series"]
-    debt = assemble_total_debt_series(facts)["series"]
+    debt = assemble_total_debt_series(facts)
 
     # Net income isn't in our concept set yet -- add it now, since P/E needs it.
     net_income = assemble_concept_series(facts, "net_income")["series"]

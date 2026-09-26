@@ -14,11 +14,13 @@ comparability is a judgment call, not something this tool decides for you.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
+from equity_valuation.wacc import CostOfEquityInputs, CostOfDebtInputs, WACCInputs, cost_of_equity_capm, cost_of_debt_effective_rate, wacc
+from equity_valuation.credit_rating import cost_of_debt_synthetic_rating
 from equity_valuation.edgar_client import get_ticker_to_cik_map, get_cik_for_ticker, get_company_facts_raw
 from equity_valuation.statement_assembly import assemble_unlevered_fcf_series, assemble_total_debt_series, assemble_concept_series
 from equity_valuation.yfinance_client import get_current_price_and_shares
-from equity_valuation.wacc import CostOfEquityInputs, CostOfDebtInputs, WACCInputs, cost_of_equity_capm, cost_of_debt_effective_rate, wacc
 from equity_valuation.dcf import NaiveDCFInputs, run_naive_dcf
 from equity_valuation.sensitivity import sensitivity_grid
 from equity_valuation.comps_data import build_company_financials
@@ -51,6 +53,14 @@ class ValuationSummary:
     dcf: DCFSummary
     comps: list[CompsSummary]  # one entry per multiple type that had usable peer data
 
+    
+
+STALE_INTEREST_THRESHOLD_DAYS = 400  # a bit over a year -- one missed annual cycle tolerated, more is not
+
+
+def _year_gap_days(year_a: str, year_b: str) -> int:
+    return abs((datetime.strptime(year_a, "%Y-%m-%d") - datetime.strptime(year_b, "%Y-%m-%d")).days)
+
 
 def run_dcf_for_ticker(
     ticker: str, ticker_map: dict,
@@ -71,7 +81,8 @@ def run_dcf_for_ticker(
 
     most_recent_year = max(fcf_series.keys())
     base_fcf = fcf_series[most_recent_year]
-    most_recent_debt = debt_series[max(debt_series.keys())]
+    most_recent_debt_year = max(debt_series.keys())
+    most_recent_debt = debt_series[most_recent_debt_year]
     most_recent_cash = cash_series[max(cash_series.keys())]
     net_debt = most_recent_debt - most_recent_cash
 
@@ -81,14 +92,45 @@ def run_dcf_for_ticker(
     coe_inputs = CostOfEquityInputs(risk_free_rate=risk_free_rate, beta=beta, equity_risk_premium=equity_risk_premium)
     cost_of_equity = cost_of_equity_capm(coe_inputs)
 
+    use_synthetic_rating = False
     if interest_series:
         most_recent_interest_year = max(interest_series.keys())
-        cost_of_debt = cost_of_debt_effective_rate(
-            CostOfDebtInputs(interest_expense=interest_series[most_recent_interest_year], total_debt=most_recent_debt)
-        )
+        if _year_gap_days(most_recent_interest_year, most_recent_debt_year) > STALE_INTEREST_THRESHOLD_DAYS:
+            # Interest data exists but is too old relative to current debt --
+            # pairing a stale interest figure with today's debt level silently
+            # misprices cost of debt (confirmed concretely with real AAPL data:
+            # interest expense stopped at FY2023, debt continued through FY2025).
+            use_synthetic_rating = True
+        else:
+            cost_of_debt = cost_of_debt_effective_rate(
+                CostOfDebtInputs(interest_expense=interest_series[most_recent_interest_year], total_debt=most_recent_debt)
+            )
     else:
-        cost_of_debt = 0.04  # placeholder, same known limitation as __main__.py
+        use_synthetic_rating = True
 
+    if use_synthetic_rating:
+        # Option B: synthetic credit rating from interest coverage. Needs EBIT
+        # and SOME interest expense figure (even a stale one is fine here --
+        # it's only used to compute a coverage ratio bracket, not used directly
+        # as the cost of debt itself, so staleness matters far less).
+        ebit_series = assemble_concept_series(facts, "ebit")["series"]
+        most_recent_ebit_year = max(ebit_series.keys())
+        if interest_series:
+            proxy_interest_year = max(interest_series.keys())
+            proxy_interest_expense = interest_series[proxy_interest_year]
+            _, matched_rating = cost_of_debt_synthetic_rating(
+                ebit=ebit_series[most_recent_ebit_year],
+                interest_expense=proxy_interest_expense,
+                risk_free_rate=risk_free_rate,
+            )
+            cost_of_debt = risk_free_rate + matched_rating.default_spread
+        else:
+            # No interest expense data at all, ever -- cannot compute coverage.
+            # This is the one remaining case with no good real fallback; using
+            # a clearly-labeled placeholder here, not disguised as computed.
+            cost_of_debt = 0.04
+
+     
     discount_rate = wacc(WACCInputs(
         market_value_equity=market_value_equity, market_value_debt=most_recent_debt,
         cost_of_equity=cost_of_equity, cost_of_debt=cost_of_debt, tax_rate=tax_rate,

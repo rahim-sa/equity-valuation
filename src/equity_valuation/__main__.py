@@ -25,7 +25,7 @@ cik = get_cik_for_ticker(TICKER, ticker_map)
 facts = get_company_facts_raw(cik)
 
 fcf_series = assemble_unlevered_fcf_series(facts)
-debt_series = assemble_total_debt_series(facts)["series"]
+debt_series = assemble_total_debt_series(facts)
 interest_series = assemble_concept_series(facts, "interest_expense")["series"]
 cash_series = assemble_concept_series(facts, "cash_and_equivalents")["series"]
 
